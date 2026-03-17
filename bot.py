@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import os
 from flask import Flask
 from threading import Thread
@@ -14,23 +15,31 @@ def home():
     return "¡El servidor de BETIAGO está activo y funcionando!"
 
 def run_flask():
-    # Render asigna un puerto dinámico, por defecto usamos 8080 si no lo encuentra
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
-    # Iniciamos Flask en un hilo separado para que no bloquee al bot
     server = Thread(target=run_flask)
     server.start()
 
 # ==========================================
 # 2. CONFIGURACIÓN DEL BOT DE DISCORD
 # ==========================================
-intents = discord.Intents.default()
-intents.message_content = True
-bot = commands.Bot(command_prefix='!', intents=intents)
+class BetiagoBot(commands.Bot):
+    def __init__(self):
+        # Configuramos los intents básicos
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(command_prefix='!', intents=intents)
 
-# --- DATOS DE LAS CUOTAS ---
+    async def setup_hook(self):
+        # Esto sincroniza los comandos con barra (/) con Discord
+        await self.tree.sync()
+        print("Comandos de barra (/) sincronizados.")
+
+bot = BetiagoBot()
+
+# --- DATOS DE LAS CUOTAS Y ESTADO ---
 cuotas_regulares = {
     "Encares": {1: 1.50, 2: 1.60, 3: 2.50},
     "Besos Pico": {1: 1.50, 2: 3.00, 3: 6.00},
@@ -39,31 +48,28 @@ cuotas_regulares = {
     "Instagrams": {1: 1.20, 2: 2.00, 3: 5.00},
     "Asistencias": {1: 1.10, 2: 1.30, 3: 1.70}
 }
-
 cuotas_especiales = {
-    "1 After McDonald's": 12.00,
-    "1 Previa Conseguida": 10.00,
-    "2 Previas Conseguidas": 40.00,
-    "1 After Departamento": 50.00,
-    "2 Afters Departamento": 400.00,
-    "1 Infidelidad": 500.00
+    "1 After McDonald's": 12.00, "1 Previa Conseguida": 10.00, "2 Previas Conseguidas": 40.00,
+    "1 After Departamento": 50.00, "2 Afters Departamento": 400.00, "1 Infidelidad": 500.00
 }
 
 apuestas_abiertas = True 
+jugadores_anotados = set() # Aquí guardaremos a los que van a jugar
 
 @bot.event
 async def on_ready():
     print(f'¡Bot {bot.user} conectado y recibiendo apuestas!')
 
-@bot.command()
-async def betiago(ctx):
-    """Envía la pizarra completa al canal de Discord"""
-    mensaje = "**🏆 PIZARRA OFICIAL BETIAGO 🏆**\n\n"
-    mensaje += "**Mercados (x1 / x2 / x3):**\n"
+# ==========================================
+# 3. COMANDOS CON BARRA (SLASH COMMANDS)
+# ==========================================
+
+@bot.tree.command(name="betiago", description="Muestra la pizarra completa de cuotas")
+async def betiago(interaction: discord.Interaction):
+    mensaje = "**🏆 PIZARRA OFICIAL BETIAGO 🏆**\n\n**Mercados (x1 / x2 / x3):**\n"
     for categoria, valores in cuotas_regulares.items():
         c1, c2, c3 = f"{valores[1]:.2f}", f"{valores[2]:.2f}", f"{valores[3]:.2f}"
-        if categoria == "Encares":
-            c1 = f"**{c1}** 🚀" 
+        if categoria == "Encares": c1 = f"**{c1}** 🚀" 
         mensaje += f"🔸 **{categoria}:** {c1} | {c2} | {c3}\n"
         
     mensaje += "\n**🚨 Mercados Especiales y Exóticos:**\n"
@@ -73,47 +79,64 @@ async def betiago(ctx):
     estado = "🟢 ABIERTAS" if apuestas_abiertas else "🔴 CERRADAS"
     mensaje += f"\n**ESTADO DE APUESTAS:** {estado}"
     
-    await ctx.send(mensaje)
+    await interaction.response.send_message(mensaje)
 
-@bot.command()
-async def cerrar(ctx):
-    """Cierra el mercado de apuestas"""
+@bot.tree.command(name="jugar", description="Anotate en la mesa para participar en las apuestas")
+async def jugar(interaction: discord.Interaction):
+    jugadores_anotados.add(interaction.user)
+    await interaction.response.send_message(f"🎲 {interaction.user.mention} se acaba de sentar en la mesa de apuestas.")
+
+@bot.tree.command(name="pedir_apuestas", description="Manda un mensaje privado a todos los anotados pidiendo su jugada")
+async def pedir_apuestas(interaction: discord.Interaction):
+    if not apuestas_abiertas:
+        await interaction.response.send_message("❌ Las apuestas están cerradas. Ábrelas con /abrir primero.")
+        return
+        
+    if not jugadores_anotados:
+        await interaction.response.send_message("⚠️ No hay nadie anotado en la mesa. Diles que usen `/jugar` primero.")
+        return
+
+    await interaction.response.send_message("📲 Enviando mensajes privados a los jugadores para que armen sus apuestas...")
+    
+    for jugador in jugadores_anotados:
+        try:
+            await jugador.send(f"🎰 **¡ES HORA DE APOSTAR!**\nLas cuotas están en la mesa. Pasame por acá tu jugada para esta noche (o andá al servidor y usá `/apostar`).")
+        except discord.Forbidden:
+            await interaction.channel.send(f"❌ No le pude mandar mensaje privado a {jugador.mention} porque tiene los MDs bloqueados.")
+
+@bot.tree.command(name="apostar", description="Registra tu jugada en el sistema")
+@app_commands.describe(jugada="Escribe a qué le vas a apostar")
+async def apostar(interaction: discord.Interaction, jugada: str):
+    if not apuestas_abiertas:
+        await interaction.response.send_message(f"❌ Lo siento {interaction.user.mention}, las apuestas están cerradas. ¡Llegaste tarde!")
+        return
+    await interaction.response.send_message(f"💸 Apuesta registrada para {interaction.user.mention}: **{jugada}**")
+
+@bot.tree.command(name="cerrar", description="Cierra el mercado de apuestas")
+async def cerrar(interaction: discord.Interaction):
     global apuestas_abiertas
     if not apuestas_abiertas:
-        await ctx.send("⚠️ Las apuestas ya estaban cerradas.")
+        await interaction.response.send_message("⚠️ Las apuestas ya estaban cerradas.")
         return
     apuestas_abiertas = False
-    await ctx.send("🚨 **¡ATENCIÓN! EL MERCADO BETIAGO ESTÁ CERRADO** 🚨\nYa no se aceptan más jugadas.")
+    await interaction.response.send_message("🚨 **¡ATENCIÓN! EL MERCADO BETIAGO ESTÁ CERRADO** 🚨\nYa no se aceptan más jugadas.")
 
-@bot.command()
-async def abrir(ctx):
-    """Vuelve a abrir el mercado de apuestas"""
+@bot.tree.command(name="abrir", description="Vuelve a abrir el mercado de apuestas")
+async def abrir(interaction: discord.Interaction):
     global apuestas_abiertas
     if apuestas_abiertas:
-        await ctx.send("⚠️ Las apuestas ya están abiertas.")
+        await interaction.response.send_message("⚠️ Las apuestas ya están abiertas.")
         return
     apuestas_abiertas = True
-    await ctx.send("✅ **¡EL MERCADO BETIAGO VUELVE A ESTAR ABIERTO!** ✅\nHagan sus jugadas.")
-
-@bot.command()
-async def apostar(ctx, *, jugada: str):
-    """Registra una apuesta si el mercado está abierto"""
-    if not apuestas_abiertas:
-        await ctx.send(f"❌ Lo siento {ctx.author.mention}, las apuestas están cerradas. ¡Llegaste tarde!")
-        return
-    await ctx.send(f"💸 Apuesta registrada para {ctx.author.mention}: **{jugada}**")
+    await interaction.response.send_message("✅ **¡EL MERCADO BETIAGO VUELVE A ESTAR ABIERTO!** ✅\nHagan sus jugadas.")
 
 # ==========================================
-# 3. EJECUCIÓN DEL PROGRAMA
+# 4. EJECUCIÓN DEL PROGRAMA
 # ==========================================
 if __name__ == '__main__':
-    # Arranca el servidor web
     keep_alive()
-    
-    # Arranca el bot de Discord obteniendo el token desde Render
     TOKEN = os.environ.get("DISCORD_TOKEN")
-    
     if TOKEN:
         bot.run(TOKEN)
     else:
-        print("ERROR: No se encontró la variable DISCORD_TOKEN. Asegurate de configurarla en Render.")
+        print("ERROR: No se encontró el TOKEN.")
