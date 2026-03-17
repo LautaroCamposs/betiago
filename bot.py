@@ -15,7 +15,6 @@ def home():
     return "¡El servidor de BETIAGO está activo y funcionando en DigitalOcean!"
 
 def run_flask():
-    # Usamos el puerto 8080 que configuramos en el panel
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
@@ -29,8 +28,8 @@ def keep_alive():
 class BetiagoBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
-        intents.message_content = True  # ¡Asegurate de activar esto en el Developer Portal!
-        intents.members = True
+        intents.message_content = True  
+        intents.members = True          
         super().__init__(command_prefix='!', intents=intents)
 
     async def setup_hook(self):
@@ -61,7 +60,7 @@ cuotas_especiales = {
 # --- ESTADO Y MEMORIA ---
 apuestas_abiertas = True 
 jugadores_anotados = set() 
-apuestas_registradas = {} # {usuario_mencion: "jugada"}
+apuestas_registradas = {} # {mencion_usuario: "jugada"}
 
 @bot.event
 async def on_ready():
@@ -73,7 +72,7 @@ async def on_ready():
 
 @bot.tree.command(name="betiago", description="Muestra la pizarra completa de cuotas")
 async def betiago(interaction: discord.Interaction):
-    def fmt(n): return f"{n:g}" # Quita .0 si es entero
+    def fmt(n): return f"{n:g}" # Formato limpio: 1.50 -> 1.5 | 12.00 -> 12
 
     mensaje = "**🏆 PIZARRA OFICIAL BETIAGO 🏆**\n\n"
     mensaje += "**Mercados por cantidad (1 / 2 / 3):**\n"
@@ -162,7 +161,7 @@ async def liquidar(interaction: discord.Interaction, resultados: str):
     for jugador, jugada in apuestas_registradas.items():
         mensaje += f"👤 **{jugador}:** {jugada}\n"
         
-    # Limpieza
+    # Limpieza para el próximo fin de semana
     apuestas_registradas.clear()
     jugadores_anotados.clear()
     
