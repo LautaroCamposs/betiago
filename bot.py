@@ -12,7 +12,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "¡BETIAGO online! Ahora podés apostar por tus amigos. 😈"
+    return "¡BETIAGO online y en modo SIGILO TOTAL! 🥷"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -60,11 +60,11 @@ cuotas_especiales = {
 # --- ESTADO Y MEMORIA ---
 apuestas_abiertas = True 
 jugadores_anotados = set() 
-apuestas_registradas = [] # Lista de diccionarios para permitir varias apuestas de un mismo user
+apuestas_registradas = [] 
 
 @bot.event
 async def on_ready():
-    print(f'¡Bot {bot.user} conectado y recibiendo apuestas!')
+    print(f'¡Bot {bot.user} conectado y en modo ninja!')
 
 # ==========================================
 # 3. COMANDOS CON BARRA (SLASH COMMANDS)
@@ -90,8 +90,8 @@ async def jugar(interaction: discord.Interaction):
     jugadores_anotados.add(interaction.user)
     await interaction.response.send_message(f"🎲 {interaction.user.mention} se sentó en la mesa.")
 
-@bot.tree.command(name="apostar", description="Registra una jugada (tuya o por otro)")
-@app_commands.describe(jugada="¿Qué va a pasar?", jugador="Opcional: ¿Por quién apostás? (Dejalo vacío si es por vos)")
+@bot.tree.command(name="apostar", description="Registra una jugada secreta (tuya o por otro)")
+@app_commands.describe(jugada="¿Qué va a pasar?", jugador="Opcional: ¿Por quién apostás?")
 async def apostar(interaction: discord.Interaction, jugada: str, jugador: discord.Member = None):
     if not apuestas_abiertas:
         await interaction.response.send_message("❌ Mercado cerrado.", ephemeral=True)
@@ -104,10 +104,8 @@ async def apostar(interaction: discord.Interaction, jugada: str, jugador: discor
         "jugada": jugada
     })
     
-    if jugador:
-        await interaction.response.send_message(f"💸 {interaction.user.mention} puso una ficha sobre {jugador.mention}. ¡Hay interna! 🤫")
-    else:
-        await interaction.response.send_message(f"💸 {interaction.user.mention} registró su propia jugada secreta. 🤫")
+    # Confirmación que SOLO ve el usuario que mandó el comando
+    await interaction.response.send_message(f"✅ Tu apuesta sobre {sujeto.display_name} fue registrada con éxito. ¡Nadie más lo sabe! 🤫", ephemeral=True)
 
 @bot.tree.command(name="ver_mesa", description="Muestra las apuestas de forma anónima")
 async def ver_mesa(interaction: discord.Interaction):
@@ -115,16 +113,17 @@ async def ver_mesa(interaction: discord.Interaction):
         await interaction.response.send_message("🕸️ La mesa está vacía.")
         return
 
-    mensaje = "**📝 TICKETS ANÓNIMOS DE LA NOCHE 📝**\n\n"
+    mensaje = "**📝 TICKETS ANÓNIMOS DE LA NOCHE 📝**\n"
+    mensaje += "*Nadie sabe quién apostó, pero esto hay en la mesa:*\n\n"
     for a in apuestas_registradas:
         if a['apostador'] == a['sujeto']:
             mensaje += f"🎲 **Alguien apostó por sí mismo:** {a['jugada']}\n"
         else:
-            mensaje += f"🔥 **Alguien apostó que {a['sujeto']} hará:** {a['jugada']}\n"
+            mensaje += f"🔥 **Alguien le jugó fichas a {a['sujeto']}:** {a['jugada']}\n"
     
     await interaction.response.send_message(mensaje)
 
-@bot.tree.command(name="liquidar", description="REVELA quién apostó por quién y qué pasó")
+@bot.tree.command(name="liquidar", description="REVELA quién apostó por quién y limpia la mesa")
 @app_commands.describe(resultados="Resumen de lo que pasó realmente")
 async def liquidar(interaction: discord.Interaction, resultados: str):
     if not apuestas_registradas:
