@@ -12,7 +12,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "¡El servidor de BETIAGO está activo y funcionando en DigitalOcean!"
+    return "¡BETIAGO está online y en modo incógnito! 🕵️‍♂️"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -72,7 +72,7 @@ async def on_ready():
 
 @bot.tree.command(name="betiago", description="Muestra la pizarra completa de cuotas")
 async def betiago(interaction: discord.Interaction):
-    def fmt(n): return f"{n:g}" # Formato limpio: 1.50 -> 1.5 | 12.00 -> 12
+    def fmt(n): return f"{n:g}" 
 
     mensaje = "**🏆 PIZARRA OFICIAL BETIAGO 🏆**\n\n"
     mensaje += "**Mercados por cantidad (1 / 2 / 3):**\n"
@@ -108,32 +108,35 @@ async def pedir_apuestas(interaction: discord.Interaction):
         await interaction.response.send_message("⚠️ No hay nadie en la mesa. Usen `/jugar` primero.")
         return
 
-    await interaction.response.send_message("📲 Mandando cobradores a los privados de los jugadores...")
+    await interaction.response.send_message("📲 Los cobradores están yendo a los privados... 🤫")
     for jugador in jugadores_anotados:
         try:
             await jugador.send("🎰 **¡DALE QUE CERRAMOS!**\nPasame por acá tu jugada o usá `/apostar` en el servidor.")
         except:
             await interaction.channel.send(f"❌ No pude contactar a {jugador.mention} (MD cerrados).")
 
-@bot.tree.command(name="apostar", description="Registra o cambia tu jugada")
+@bot.tree.command(name="apostar", description="Registra tu jugada de forma secreta")
 @app_commands.describe(jugada="Escribe tu pronóstico para la noche")
 async def apostar(interaction: discord.Interaction, jugada: str):
     if not apuestas_abiertas:
-        await interaction.response.send_message(f"❌ {interaction.user.mention}, llegaste tarde. Mercado cerrado.")
+        await interaction.response.send_message(f"❌ Mercado cerrado.", ephemeral=True)
         return
     
     apuestas_registradas[interaction.user.mention] = jugada
-    await interaction.response.send_message(f"💸 Apuesta registrada para {interaction.user.mention}: **{jugada}**")
+    await interaction.response.send_message(f"💸 {interaction.user.mention} ha registrado su jugada secreta. 🤫")
 
-@bot.tree.command(name="ver_mesa", description="Muestra todas las apuestas actuales")
+@bot.tree.command(name="ver_mesa", description="Muestra las apuestas de forma anónima")
 async def ver_mesa(interaction: discord.Interaction):
     if not apuestas_registradas:
         await interaction.response.send_message("🕸️ La mesa está vacía.")
         return
 
-    mensaje = "**📝 TICKET OFICIAL DE LA NOCHE 📝**\n\n"
-    for jugador, jugada in apuestas_registradas.items():
-        mensaje += f"👤 **{jugador}:** {jugada}\n"
+    mensaje = "**📝 TICKETS ANÓNIMOS DE LA NOCHE 📝**\n"
+    mensaje += "*Alguien apostó lo siguiente...*\n\n"
+    for jugada in apuestas_registradas.values():
+        mensaje += f"🎲 **Apuesta:** {jugada}\n"
+    
+    mensaje += f"\nTotal de jugadores: {len(apuestas_registradas)}"
     await interaction.response.send_message(mensaje)
 
 @bot.tree.command(name="cerrar", description="Cierra el mercado de apuestas")
@@ -148,20 +151,19 @@ async def abrir(interaction: discord.Interaction):
     apuestas_abiertas = True
     await interaction.response.send_message("✅ **Mercado abierto. ¡Hagan sus apuestas!**")
 
-@bot.tree.command(name="liquidar", description="Termina la noche y limpia la mesa")
+@bot.tree.command(name="liquidar", description="Termina la noche y REVELA las apuestas")
 @app_commands.describe(resultados="Resumen de lo que pasó realmente")
 async def liquidar(interaction: discord.Interaction, resultados: str):
     if not apuestas_registradas:
         await interaction.response.send_message("⚠️ No hay nada que liquidar.")
         return
 
-    mensaje = "⚖️ **¡RESULTADOS DE LA NOCHE!** ⚖️\n\n"
-    mensaje += f"🚨 **Sucedió:** *{resultados}*\n\n"
-    mensaje += "**Pronósticos de la mesa:**\n"
+    mensaje = "⚖️ **¡EL VEREDICTO FINAL!** ⚖️\n\n"
+    mensaje += f"🚨 **LO QUE PASÓ:** *{resultados}*\n\n"
+    mensaje += "**Revelando apuestas:**\n"
     for jugador, jugada in apuestas_registradas.items():
-        mensaje += f"👤 **{jugador}:** {jugada}\n"
+        mensaje += f"👤 **{jugador} había dicho:** {jugada}\n"
         
-    # Limpieza para el próximo fin de semana
     apuestas_registradas.clear()
     jugadores_anotados.clear()
     
