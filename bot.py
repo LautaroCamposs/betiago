@@ -12,7 +12,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "¡BETIAGO online! Bienvenida por privado activada. 🎰"
+    return "¡BETIAGO online! Modo texto libre activado. ✍️"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -85,57 +85,35 @@ async def betiago(interaction: discord.Interaction):
     mensaje += f"\n**ESTADO DE APUESTAS:** {estado}"
     await interaction.response.send_message(mensaje)
 
-@bot.tree.command(name="jugar", description="Anotate en la mesa y recibí instrucciones por privado")
+@bot.tree.command(name="jugar", description="Anotate en la mesa para participar")
 async def jugar(interaction: discord.Interaction):
     jugadores_anotados.add(interaction.user)
-    
-    # Confirmación en el canal público
-    await interaction.response.send_message(f"🎲 {interaction.user.mention} se sentó en la mesa. ¡Revisá tus mensajes directos! 📩")
-    
-    # Envío de instrucciones por PRIVADO inmediatamente
-    try:
-        bienvenida = (
-            f"🎰 **¡BIENVENIDO A LA MESA, {interaction.user.display_name.upper()}!** 🎰\n\n"
-            "Ya podés mandar tu apuesta de forma secreta desde el servidor.\n\n"
-            "**¿Cómo apostar?**\n"
-            "Usá el comando `/apostar` en el canal del servidor.\n"
-            "• En `jugada` poné tu pronóstico (ej: *2 encares y 1 beso*).\n"
-            "• En `jugador` (opcional) seleccioná a un amigo si querés apostarle fichas a él.\n\n"
-            "🤫 Recordá que el bot **no dirá qué apostaste** en el canal público. ¡Mucha suerte!"
-        )
-        await interaction.user.send(bienvenida)
-    except discord.Forbidden:
-        await interaction.followup.send("⚠️ No pude mandarte las instrucciones por privado. ¡Tenés los MD bloqueados!", ephemeral=True)
+    await interaction.response.send_message(f"✅ ¡Ya estás en la mesa, {interaction.user.display_name}! Usá `/apostar` para mandar tu jugada secreta.", ephemeral=True)
+    await interaction.channel.send(f"🎲 Alguien se acaba de sentar en la mesa de apuestas...")
 
-@bot.tree.command(name="apostar", description="Registra una jugada secreta")
-@app_commands.describe(jugada="¿Qué va a pasar?", jugador="Opcional: ¿Por quién apostás?")
-async def apostar(interaction: discord.Interaction, jugada: str, jugador: discord.Member = None):
+@bot.tree.command(name="apostar", description="Registra una jugada secreta (¡Nadie más la verá!)")
+@app_commands.describe(jugada="¿Qué va a pasar?", nombre_sujeto="Nombre de quién va a hacer la acción (Escribí lo que quieras)")
+async def apostar(interaction: discord.Interaction, jugada: str, nombre_sujeto: str = None):
     if not apuestas_abiertas:
-        await interaction.response.send_message("❌ Mercado cerrado.", ephemeral=True)
+        await interaction.response.send_message("❌ El mercado está cerrado.", ephemeral=True)
         return
     
-    sujeto = jugador if jugador else interaction.user
+    # Si no pone nombre, el sujeto es el mismo apostador
+    sujeto = nombre_sujeto if nombre_sujeto else interaction.user.display_name
+    
     apuestas_registradas.append({
         "apostador": interaction.user.mention,
-        "sujeto": sujeto.mention,
+        "sujeto": sujeto,
         "jugada": jugada
     })
     
-    await interaction.response.send_message("✅ Procesando tu apuesta...", ephemeral=True)
-    
-    try:
-        msg_privado = f"🎰 **¡Apuesta Confirmada!**\n\n"
-        if jugador:
-            msg_privado += f"Le jugaste fichas a: **{jugador.display_name}**\n"
-        else:
-            msg_privado += f"Apostaste por: **Vos mismo**\n"
-        msg_privado += f"Tu jugada: *{jugada}*\n\n"
-        msg_privado += "🤫 Nadie en el servidor sabe qué pusiste. Se revelará al liquidar."
-        await interaction.user.send(msg_privado)
-    except discord.Forbidden:
-        await interaction.followup.send("⚠️ Apuesta guardada, pero tenés los MD cerrados para el comprobante.", ephemeral=True)
+    # Confirmación efímera (solo para el usuario)
+    await interaction.response.send_message(
+        f"🎰 **¡Apuesta Guardada!**\nSujeto: **{sujeto}**\nTu jugada: *{jugada}*\n\n🤫 Nadie más en el servidor puede ver este mensaje.", 
+        ephemeral=True
+    )
 
-@bot.tree.command(name="ver_mesa", description="Muestra las apuestas de forma anónima")
+@bot.tree.command(name="ver_mesa", description="Muestra las apuestas de la noche de forma anónima")
 async def ver_mesa(interaction: discord.Interaction):
     if not apuestas_registradas:
         await interaction.response.send_message("🕸️ La mesa está vacía.")
@@ -143,10 +121,9 @@ async def ver_mesa(interaction: discord.Interaction):
 
     mensaje = "**📝 TICKETS ANÓNIMOS DE LA NOCHE 📝**\n\n"
     for a in apuestas_registradas:
-        if a['apostador'] == a['sujeto']:
-            mensaje += f"🎲 **Alguien apostó por sí mismo:** {a['jugada']}\n"
-        else:
-            mensaje += f"🔥 **Alguien le jugó fichas a {a['sujeto']}:** {a['jugada']}\n"
+        # Si el nombre del sujeto coincide con el del apostador (lo guardamos como mention pero comparamos)
+        # Para simplificar el anonimato total:
+        mensaje += f"🔥 **Alguien apostó que [{a['sujeto']}] hará:** {a['jugada']}\n"
     
     await interaction.response.send_message(mensaje)
 
@@ -158,14 +135,11 @@ async def liquidar(interaction: discord.Interaction, resultados: str):
         return
 
     mensaje = "⚖️ **¡EL VEREDICTO FINAL!** ⚖️\n\n"
-    mensaje += f"🚨 **Sucedió:** *{resultados}*\n\n"
+    mensaje += f"🚨 **RESULTADOS:** *{resultados}*\n\n"
     mensaje += "**Destapando las cartas:**\n"
     
     for a in apuestas_registradas:
-        if a['apostador'] == a['sujeto']:
-            mensaje += f"👤 **{a['apostador']}** apostó por sí mismo: {a['jugada']}\n"
-        else:
-            mensaje += f"👤 **{a['apostador']}** le jugó fichas a **{a['sujeto']}**: {a['jugada']}\n"
+        mensaje += f"👤 **{a['apostador']}** le jugó fichas a **{a['sujeto']}**: {a['jugada']}\n"
         
     apuestas_registradas.clear()
     jugadores_anotados.clear()
